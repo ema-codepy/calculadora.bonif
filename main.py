@@ -1,5 +1,23 @@
-import ipywidgets as widgets
-from IPython.display import display, clear_output
+import streamlit as st
+
+# Configuração da página
+st.set_page_config(page_title="CALCULADORA BONIF", layout="centered")
+
+# Estilo para esconder menus e deixar com cara de App
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 3em;
+        background-color: #28a745;
+        color: white;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # 1. Base de Preços
 precos = {
@@ -7,101 +25,58 @@ precos = {
     'SC': {'Dunhill': 135.04, 'Kent': 70.95, 'Rothmans (BASE)': 96.13}
 }
 
-# --- Interface ---
-style = {'description_width': 'initial'}
-layout = widgets.Layout(width='460px')
+# --- Cabeçalho ---
+st.markdown(f"""
+    <div style="background-color: #002d72; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 20px;">
+        <h1 style="color: white; margin: 0; font-family: sans-serif; letter-spacing: 2px; font-size: 24px;">CALCULADORA BONIF</h1>
+    </div>
+""", unsafe_allow_html=True)
 
-# Widgets
-dropdown_estado = widgets.Dropdown(options=['RS', 'SC'], description='Estado:', style=style, layout=layout)
-input_obj_100 = widgets.IntText(value=120, description='Objetivo (100%):', style=style, layout=layout)
+# --- Entrada de Dados ---
+estado = st.selectbox("Estado:", ["RS", "SC"])
+obj_100 = st.number_input("Objetivo (100%):", value=120, step=1)
 
-# Seleção de Plano (Multiplicadores)
-planos_opcoes = [
-    ('Prime Light (100%)', 1.0),
-    ('Varejo Normal (120%)', 1.2),
-    ('Prime Boost (130%)', 1.3),
-    ('Prime Offenders (150%)', 1.5)
-]
-dropdown_plano = widgets.Dropdown(options=planos_opcoes, value=1.3, description='Plano do Varejo:', style=style, layout=layout)
+planos = {
+    'Prime Light (100%)': 1.0,
+    'Varejo Normal (120%)': 1.2,
+    'Prime Boost (130%)': 1.3,
+    'Prime Offenders (150%)': 1.5
+}
+plano_sel = st.selectbox("Plano Varejo:", list(planos.keys()), index=2)
 
-input_obj_max = widgets.IntText(value=156, description='Objetivo Máximo (Ajustável):', style=style, layout=layout)
+# Cálculo automático do Objetivo Máximo
+obj_max_auto = int(obj_100 * planos[plano_sel])
+obj_max = st.number_input("Objetivo Máximo:", value=obj_max_auto, step=1)
 
-dropdown_faixa = widgets.Dropdown(options=[(f'Faixa {i}', i) for i in range(1, 9)], value=5, description='Faixa de Premiação:', style=style, layout=layout)
+faixa = st.selectbox("Faixa:", list(range(1, 9)), index=4)
 
-lista_perc = [0] + list(range(11, 37)) + [39, 40, 44, 45, 47, 48, 53, 54, 64, 71, 72, 95, 96]
-dropdown_percentual = widgets.Dropdown(options=[(f'{p}%', p/100) for p in lista_perc], value=0.96, description='% Bonificação:', style=style, layout=layout)
+lista_p = [0] + list(range(11, 37)) + [39, 40, 44, 45, 47, 48, 53, 54, 64, 71, 72, 95, 96]
+perc_sel = st.selectbox("% Bonificação:", lista_p, index=len(lista_p)-1) / 100
 
-dropdown_marca = widgets.Dropdown(options=['Rothmans', 'Kent', 'Dunhill'], description='Marca Bonificação:', style=style, layout=layout)
+marca = st.selectbox("Marca Prêmio:", ["Rothmans", "Kent", "Dunhill"])
 
-btn_calcular = widgets.Button(description='CALCULAR BONIFICAÇÃO', button_style='success', layout={'width': '460px', 'height': '40px'})
-output_painel = widgets.Output()
-
-# Lógica para atualizar o Objetivo Máximo automaticamente ao mudar o plano ou objetivo 100%
-def atualizar_objetivo_max(*args):
-    input_obj_max.value = int(input_obj_100.value * dropdown_plano.value)
-
-input_obj_100.observe(atualizar_objetivo_max, 'value')
-dropdown_plano.observe(atualizar_objetivo_max, 'value')
-
-def realizar_calculo(b):
-    with output_painel:
-        clear_output()
-        
-        est = dropdown_estado.value
-        obj_100 = input_obj_100.value
-        obj_max = input_obj_max.value
-        perc = dropdown_percentual.value
-        faixa = dropdown_faixa.value
-        marca = dropdown_marca.value
-        
-        # 1. Trava de 80% (Baseado no percentual atingido informado)
-        if perc < 0.8 and perc != 0:
-            display(widgets.HTML("<b style='color:red;'>⚠️ Bonificação não atingida: O varejo não atingiu o mínimo de 80% do objetivo.</b>"))
-            return
-
-        # 2. Diferença de Pacotes (Excedente)
+# --- Botão e Lógica ---
+if st.button("CALCULAR RESULTADO"):
+    if perc_sel < 0.8 and perc_sel != 0:
+        st.error("Bonificação não atingida: O varejo não atingiu o mínimo de 80% do objetivo.")
+    else:
         diferenca = obj_max - obj_100
-        
-        # 3. Bonificação Adicional (Sobre o excedente)
-        bonif_adicional = diferenca * perc
-        
-        # 4. Bonificação Fixa (Faixas)
+        bonif_adicional = diferenca * perc_sel
         qtd_fixa = 2 if faixa <= 4 else 3
         
-        # 5. Lógica de Conversão Financeira
-        p_base = precos[est]['Rothmans (BASE)']
+        p_base = precos[estado]['Rothmans (BASE)']
         if marca == 'Rothmans':
             res_bruto = bonif_adicional + qtd_fixa
         else:
-            p_prem = precos[est][marca]
-            # Converte o valor financeiro de Rothmans para a marca Premium
+            p_prem = precos[estado][marca]
             res_bruto = (bonif_adicional * (p_base / p_prem)) + qtd_fixa
 
         resultado_final = round(res_bruto)
 
-        # --- Saída Visual ---
-        print("="*50)
-        print(f"        RESULTADO FINAL ({est})")
-        print("="*50)
-        print(f"PLANO SELECIONADO: {next(k for k, v in planos_opcoes if v == dropdown_plano.value)}")
-        print(f"Diferença (Máx - 100%): {diferenca} pct")
-        print(f"Bonif. Adicional: {bonif_adicional:.2f} | Fixa: {qtd_fixa}")
-        print("-" * 50)
-        display(widgets.HTML(f"<h2 style='color:#28a745;'>✅ TOTAL: {resultado_final} PACOTES ({marca})</h2>"))
-        print(f"(Cálculo exato: {res_bruto:.4f})")
-        print("="*50)
-
-btn_calcular.on_click(realizar_calculo)
-
-display(widgets.HTML("<h2>🧮 Calculadora BAT - Completa</h2>"))
-display(widgets.VBox([
-    dropdown_estado, 
-    input_obj_100, 
-    dropdown_plano, 
-    input_obj_max, 
-    dropdown_faixa, 
-    dropdown_percentual, 
-    dropdown_marca, 
-    btn_calcular
-]))
-display(output_painel)
+        st.markdown(f"""
+            <div style="border: 2px solid #28a745; padding: 20px; border-radius: 10px; background-color: white; text-align: center; margin-top: 20px;">
+                <p style="margin: 0; color: #666; font-size: 14px; text-transform: uppercase;">Quantidade Final</p>
+                <h1 style="margin: 10px 0; color: #28a745; font-size: 40px;">{resultado_final} Pacotes</h1>
+                <p style="font-size: 12px; color: #888;">MARCA: {marca.upper()} | OBJ MAX: {obj_max}</p>
+            </div>
+        """, unsafe_allow_html=True)
